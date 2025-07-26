@@ -2,73 +2,90 @@ package api
 
 import (
 	"errors"
+	"fmt"
+	"log"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 )
 
-const DateFormat = "20060102" // формат даты без времени, например "20250721"
-
-// afterNow сравнивает две даты, игнорируя время, возвращая true если date > now
-func afterNow(date, now time.Time) bool {
-	dy, dm, dd := date.Date()
-	ny, nm, nd := now.Date()
-
-	if dy != ny {
-		return dy > ny
+// nextDateHandler обрабатывает запросы для расчета следующей даты
+func nextDateHandler(w http.ResponseWriter, r *http.Request) {
+	// Исправлено: Добавлена проверка метода HTTP
+	if r.Method != http.MethodGet {
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
-	if dm != nm {
-		return dm > nm
+
+	nowStr := r.FormValue("now")
+	start := r.FormValue("date")
+	repeat := r.FormValue("repeat")
+
+	var now time.Time
+	var err error
+	if nowStr == "" {
+		now = time.Now()
+	} else {
+		now, err = time.Parse(DateFormat, nowStr)
+		if err != nil {
+			writeJSONError(w, "invalid now date", http.StatusBadRequest)
+			return
+		}
 	}
-	return dd > nd
+
+	result, err := NextDate(now, start, repeat)
+	if err != nil {
+		writeJSONError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Исправлено: Добавлена проверка ошибки при записи ответа
+	if _, err := fmt.Fprint(w, result); err != nil {
+		log.Printf("write response error: %v", err)
+	}
 }
 
-// NextDate рассчитывает следующую дату выполнения задачи в зависимости от правила повторения
+// NextDate вычисляет следующую дату выполнения задачи
 func NextDate(now time.Time, dstart string, repeat string) (string, error) {
-	// если правило повторения пустое, задача считается не повторяющейся (удаляется)
 	if repeat == "" {
-		return "", errors.New("no repeat rule: task will be deleted")
+		return "", errors.New("repeat rule is required")
 	}
 
-	// парсим стартовую дату из строки
 	startDate, err := time.Parse(DateFormat, dstart)
 	if err != nil {
 		return "", errors.New("invalid start date")
 	}
 
-	// разбиваем правило повторения, например "d 3" (каждые 3 дня)
 	parts := strings.Split(repeat, " ")
 
 	switch parts[0] {
-	case "d": // повторение по дням
+	case "d":
 		if len(parts) != 2 {
-			return "", errors.New("invalid d rule format")
+			return "", errors.New("invalid daily rule format")
 		}
 		days, err := strconv.Atoi(parts[1])
 		if err != nil || days < 1 || days > 400 {
 			return "", errors.New("invalid number of days")
 		}
-		// прибавляем дни пока дата не станет строго позже текущей (now)
 		for {
 			startDate = startDate.AddDate(0, 0, days)
-			if afterNow(startDate, now) {
+			if AfterNow(startDate, now) {
 				break
 			}
 		}
 		return startDate.Format(DateFormat), nil
 
-	case "y": // повторение по годам (ежегодно)
-		// прибавляем по одному году пока дата не станет строго позже now
+	case "y":
 		for {
 			startDate = startDate.AddDate(1, 0, 0)
-			if afterNow(startDate, now) {
+			if AfterNow(startDate, now) {
 				break
 			}
 		}
 		return startDate.Format(DateFormat), nil
 
 	default:
-		// если правило не поддерживается — возвращаем ошибку
 		return "", errors.New("unsupported repeat rule")
 	}
 }

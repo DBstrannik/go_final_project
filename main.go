@@ -8,22 +8,29 @@ import (
 )
 
 func main() {
-	// Создаём логгер, который будет писать в консоль с префиксом "INFO:" и меткой времени
+	// Создаем логгер для вывода информации о работе программы
 	logger := log.New(os.Stdout, "INFO: ", log.LstdFlags)
 
-	// Подключаемся к SQLite-базе данных (файл scheduler.db).
-	// Если база не существует, скорее всего будет создана.
-	if err := db.Init("scheduler.db", logger); err != nil {
-		// Прерываем выполнение, если не удалось инициализировать базу
-		logger.Fatal("error initializing database:", err)
+	// Инициализируем подключение к базе данных
+	dbInstance, err := db.Init("scheduler.db", logger)
+	if err != nil {
+		logger.Fatal("Error connecting to the database:", err)
 	}
 
-	// Создаём HTTP-сервер и передаём в него логгер для последующего логирования внутри сервера
-	srv := server.NewServer(logger)
+	// Исправлено: Добавлено закрытие подключения к БД при завершении программы
+	defer func() {
+		if err := dbInstance.Close(); err != nil {
+			logger.Printf("Error closing the DATABASE connection: %v", err)
+		}
+		logger.Println("The database connection is closed")
+	}()
 
-	// Запускаем сервер — например, он может слушать порт и обрабатывать запросы
+	// Создаем новый сервер
+	srv := server.NewServer(logger, dbInstance)
+
+	// Запускаем сервер
+	logger.Println("Server starting...")
 	if err := srv.Start(); err != nil {
-		// Если порт занят или сервер не может стартануть, приложение аварийно завершится
-		logger.Fatal("Error starting server: ", err)
+		logger.Fatal("Server error:", err)
 	}
 }

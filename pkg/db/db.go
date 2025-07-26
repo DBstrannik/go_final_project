@@ -5,49 +5,56 @@ import (
 	"log"
 	"os"
 
-	_ "modernc.org/sqlite" // SQLite драйвер для Go
+	_ "modernc.org/sqlite"
 )
 
-var DB *sql.DB // глобальная переменная с подключением к базе данных
+// DB представляет соединение с базой данных,
+// Исправлена бд, с глобальной на срукт, как в задании с посылками...
+type DB struct {
+	conn *sql.DB
+}
 
-// SQL-схема для создания таблицы scheduler и индекса по дате
 const schema = `
 CREATE TABLE scheduler (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,      -- уникальный ID задачи, автоинкремент
-	date CHAR(8) NOT NULL DEFAULT '',           -- дата задачи в формате "YYYYMMDD"
-	title VARCHAR(128) NOT NULL DEFAULT '',     -- заголовок задачи
-	comment TEXT NOT NULL DEFAULT '',            -- комментарий/описание задачи
-	repeat VARCHAR(128) NOT NULL DEFAULT ''     -- правило повтора задачи (например "d 7")
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	date CHAR(8) NOT NULL DEFAULT '',
+	title VARCHAR(128) NOT NULL DEFAULT '',
+	comment TEXT NOT NULL DEFAULT '',
+	repeat VARCHAR(128) NOT NULL DEFAULT ''
 );
-CREATE INDEX idx_scheduler_date ON scheduler(date);  -- индекс по дате для ускорения выборок
+CREATE INDEX idx_scheduler_date ON scheduler(date);
 `
 
-// Init инициализирует базу данных:
-// - проверяет, существует ли файл базы данных
-// - если нет, создаёт новую базу и нужные таблицы
-// - открывает соединение и сохраняет его в глобальной переменной DB
-func Init(dbFile string, logger *log.Logger) error {
-	// Проверяем наличие файла базы данных
+// Init инициализирует базу данных
+func Init(dbFile string, logger *log.Logger) (*DB, error) {
 	_, err := os.Stat(dbFile)
 	install := false
 	if err != nil {
-		install = true // файл отсутствует — нужно создать базу с таблицей
+		install = true
 	}
 
-	// Открываем соединение с SQLite базой по пути dbFile
-	DB, err = sql.Open("sqlite", dbFile)
+	conn, err := sql.Open("sqlite", dbFile)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Если база новая, создаём таблицу и индекс
 	if install {
 		logger.Println("Create a database and a scheduler table...")
-		_, err = DB.Exec(schema)
+		_, err = conn.Exec(schema)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
+	return &DB{conn: conn}, nil
+}
+
+// Close закрывает соединение с базой данных
+func (d *DB) Close() error {
+	return d.conn.Close()
+}
+
+// Conn возвращает соединение с базой данных
+func (d *DB) Conn() *sql.DB {
+	return d.conn
 }

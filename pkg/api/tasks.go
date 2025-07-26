@@ -1,29 +1,33 @@
 package api
 
 import (
-	"go_final_project/pkg/db"
 	"net/http"
+
+	dbpkg "go_final_project/pkg/db"
 )
 
-// TasksResp — структура для сериализации списка задач в JSON
+// Исправлено: лимит в константе
+const tasksLimit = 50
+
+// TasksResp представляет структуру ответа с списком задач
 type TasksResp struct {
-	Tasks []*db.Task `json:"tasks"` // массив указателей на задачи
+	Tasks []*dbpkg.Task `json:"tasks"`
 }
 
-// tasksHandler — обработчик HTTP запроса для получения списка задач (до 50 штук)
-// запрашивает задачи из базы и возвращает их клиенту в формате JSON
-func tasksHandler(w http.ResponseWriter, r *http.Request) {
-	tasks, err := db.Tasks(50) // запрашиваем из базы максимум 50 задач
-	if err != nil {
-		// при ошибке возвращаем JSON с описанием ошибки
-		writeJSON(w, map[string]string{
-			"error": err.Error(),
-		})
+// tasksHandler обрабатывает запросы на получение списка задач
+func tasksHandler(w http.ResponseWriter, r *http.Request, db *dbpkg.DB) {
+	// Исправлено: Добавлена проверка метода HTTP
+	if r.Method != http.MethodGet {
+		writeJSONError(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// при успешном получении — сериализуем список задач в JSON и отправляем клиенту
-	writeJSON(w, TasksResp{
-		Tasks: tasks,
-	})
+	tasks, err := db.Tasks(tasksLimit)
+	if err != nil {
+		// Исправлено: Разные коды ошибок для разных ситуаций
+		writeJSONError(w, "database error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, TasksResp{Tasks: tasks}, http.StatusOK)
 }
